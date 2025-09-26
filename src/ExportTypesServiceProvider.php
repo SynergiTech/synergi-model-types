@@ -3,6 +3,7 @@
 namespace SynergiTech\ExportTypes;
 
 use Illuminate\Support\ServiceProvider;
+use SynergiTech\ExportTypes\Commands\GenerateFormRequestsCommand;
 use SynergiTech\ExportTypes\Commands\GenerateInterfaceUnionsCommand;
 
 class ExportTypesServiceProvider extends ServiceProvider
@@ -13,6 +14,7 @@ class ExportTypesServiceProvider extends ServiceProvider
             $this->commands(
                 [
                     GenerateInterfaceUnionsCommand::class,
+                    GenerateFormRequestsCommand::class,
                 ]
             );
         }
