@@ -69,12 +69,13 @@ JAVASCRIPT;
         return collect($formRequest->rules())
             ->mapWithKeys(function ($rules, $field) use ($mappings) {
                 $type = 'any';
-                $divider = in_array('nullable', $rules) ? '?' : '';
+                $adjustedRules = is_string($rules) ? explode('|', $rules) : (is_array($rules) ? $rules : []);
+                $divider = in_array('nullable', $adjustedRules) ? '?' : '';
 
                 // Determine type by iterating through our mappings.
                 foreach ($mappings as $tsType => $phpTypes) {
                     foreach ($phpTypes as $phpType) {
-                        if (in_array($phpType, $rules)) {
+                        if (in_array($phpType, $adjustedRules)) {
                             $type = $tsType;
                             break 2;
                         }
