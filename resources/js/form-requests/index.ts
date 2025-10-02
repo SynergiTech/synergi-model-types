@@ -4,6 +4,7 @@ export namespace App.Http.Requests {
    */
   export interface TestRequest2 {
     just_a_string: boolean;
+    test: any[];
   }
 
   /**

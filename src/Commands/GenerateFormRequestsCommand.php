@@ -86,8 +86,8 @@ class GenerateFormRequestsCommand extends BaseCommand
                     'rules' => $adjustedRules
                 ];
             })
-            // Strip array value types (e.g., rule_array.*) because we don't support that yet
-            ->reject(fn($v, $k) => str_contains($k, '.*'))
+            // Strip any keys that contain a dot
+            ->reject(fn($v, $k) => Str::contains($k, '.'))
             // Strip any rules that are closures or invokable objects
             ->reject(fn($v) => collect($v['rules'])->contains(fn($rule) => is_object($rule)))
             ->map(function ($item, $field) use ($mappings) {

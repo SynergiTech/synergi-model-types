@@ -18,7 +18,9 @@ class TestRequest2 extends FormRequest
                 function (string $attr, mixed $value, Closure $fail) {
                     // Intentionally left empty.
                 },
-            ]
+            ],
+            'test' => 'array',
+            'test.with.dot' => 'string',
         ];
     }
 }
