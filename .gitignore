@@ -19,3 +19,4 @@ export-types
 /.vscode
 .DS_Store
 /storage
+resources/js/form-requests/index.d.ts

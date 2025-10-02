@@ -56,7 +56,7 @@ abstract class BaseCommand extends Command
  
     protected function tsFilePath(string $path): string
     {
-        return $this->joinPaths($path, 'index.ts');
+        return $this->joinPaths($path, 'index.d.ts');
     }
 
 
