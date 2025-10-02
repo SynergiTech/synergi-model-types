@@ -88,6 +88,8 @@ class GenerateFormRequestsCommand extends BaseCommand
             })
             // Strip array value types (e.g., rule_array.*) because we don't support that yet
             ->reject(fn($v, $k) => str_contains($k, '.*'))
+            // Strip any rules that are closures or invokable objects
+            ->reject(fn($v) => collect($v['rules'])->contains(fn($rule) => is_object($rule)))
             ->map(function ($item, $field) use ($mappings) {
                 $isNullable = in_array('nullable', $item['rules']);
                 $isSometimes = in_array('sometimes', $item['rules']);
