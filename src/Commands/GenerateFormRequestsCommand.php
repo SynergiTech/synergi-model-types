@@ -28,33 +28,42 @@ class GenerateFormRequestsCommand extends BaseCommand
     {
         $path = $this->option('output');
 
-        $formRequests = $this->readFormRequests($this->base()); 
-        $tsContent = collect($formRequests)
-            ->map(function ($formRequest) {
-                $rulesString = collect($formRequest['rules'])
-                    ->map(fn($type, $field) => "{$field}{$type};")
-                    ->join("\n");
-                    // Derive namespace from the class, e.g.,
-                    //  App\Http\Requests\MemberRequest => App.Http.Requests
-                    $namespace = Str::of($formRequest['class'])
-                        ->beforeLast('\\')
-                        ->replace('\\', '.')
-                        ->toString();
+        $formRequests = $this->readFormRequests($this->base());
 
-                    return <<<JAVASCRIPT
-/**
- * @see {$formRequest['class']}
- */
-export namespace {$namespace} {
-    export interface {$formRequest['entity']} {
+        // Group form requests by namespace
+        $grouped = collect($formRequests)
+            ->groupBy(function ($formRequest) {
+            return Str::of($formRequest['class'])
+                ->beforeLast('\\')
+                ->replace('\\', '.')
+                ->toString();
+            });
+
+        $tsContent = $grouped->map(function ($requests, $namespace) {
+            $interfaces = collect($requests)->map(function ($formRequest) {
+            $rulesString = collect($formRequest['rules'])
+                ->map(fn($type, $field) => "{$field}{$type};")
+                ->join("\n");
+            return <<<TS
+    /**
+     * @see {$formRequest['class']}
+     */
+        export interface {$formRequest['entity']} {
         {$rulesString}
+        }
+    TS;
+            })->join("\n\n");
+
+            return <<<JAVASCRIPT
+    export namespace {$namespace} {
+    {$interfaces}
     }
-}
-JAVASCRIPT;
-            })
-            ->join("\n\n");
+    JAVASCRIPT;
+        })->join("\n\n");
+
         $tsContent .= "\n\nexport {};\n";
         $this->files->put($this->tsFilePath($path), $tsContent);
+
     }
 
     protected function parseRules(FormRequest $formRequest) {
@@ -66,23 +75,37 @@ JAVASCRIPT;
             'any[]' => ['array'],
         ];
 
-        return collect($formRequest->rules())
-            ->mapWithKeys(function ($rules, $field) use ($mappings) {
-                $type = 'any';
-                $adjustedRules = is_string($rules) ? explode('|', $rules) : (is_array($rules) ? $rules : []);
-                $divider = in_array('nullable', $adjustedRules) ? '?' : '';
+        $rules = $formRequest->rules();
 
-                // Determine type by iterating through our mappings.
+        // Preparse the rules into a consistent format for easier processing
+        $r = collect($rules)
+            ->map(function ($rules, $field) use ($mappings, $formRequest) {    
+                $adjustedRules = is_array($rules) ? $rules : explode('|', $rules);
+
+                return [ 
+                    'rules' => $adjustedRules
+                ];
+            })
+            // Strip array value types (e.g., rule_array.*) because we don't support that yet
+            ->reject(fn($v, $k) => str_contains($k, '.*'))
+            ->map(function ($item, $field) use ($mappings) {
+                $isNullable = in_array('nullable', $item['rules']);
+                $isSometimes = in_array('sometimes', $item['rules']);
+                $isArray = in_array('array', $item['rules']);
+                $type = 'any';
+
                 foreach ($mappings as $tsType => $phpTypes) {
-                    foreach ($phpTypes as $phpType) {
-                        if (in_array($phpType, $adjustedRules)) {
-                            $type = $tsType;
-                            break 2;
-                        }
+                    if (count(array_intersect($phpTypes, $item['rules'])) > 0) {
+                        $type = $tsType;
+                        break;
                     }
                 }
-                return [$field => "{$divider}: {$type}"];
+
+                $prefix = ($isNullable || $isSometimes) ? '?:' : ':';
+                return "{$prefix} {$type}";
             });
+
+        return $r->toArray(); 
     }
 
     protected function readFormRequests(string $path)

@@ -1,29 +1,22 @@
-/**
- * @see App\Http\Requests\MemberRequest
- */
 export namespace App.Http.Requests {
-  export interface MemberRequest {
-    name: any;
-    member_number: number;
-    customer_type: any;
-    sort_sequence?: any;
-    commission_rate?: any;
-    invoice_by_post: boolean;
-    invoice_by_email: boolean;
-    payment_method?: any;
-    vat_number?: number;
-    holding_number?: any;
-    fabbl_number?: any;
-    accs_number?: any;
-    organic_ref?: any;
-    other_ref?: any;
-    enterprise?: any;
-    ownership?: any;
-    farm_size?: number;
-    order_notes?: any;
-    invoice_notes?: any;
-    invoices_carried_forward: boolean;
-    member_group_id?: any;
+  /**
+   * @see App\Http\Requests\TestRequest2
+   */
+  export interface TestRequest2 {
+    just_a_string: boolean;
+  }
+
+  /**
+   * @see App\Http\Requests\TestRequest
+   */
+  export interface TestRequest {
+    just_a_string: boolean;
+    array_of_rules_as_seperator?: any[];
+    array_of_rules_as_array: string;
+    sometimes_required?: string;
+    required_rule: string;
+    nullable_rule?: string;
+    rule_array: any[];
   }
 }
 
