@@ -118,7 +118,12 @@ class GenerateFormRequestsCommand extends BaseCommand
                         $tsFields[] = "    {$field}{$optional}: {$tsType};";
                     }
 
-                    $tsContent .= "  export type {$entity} = {\n";
+                    $tsContent .= "
+/**
+ * @see {$request['class']}
+ * @see filePath
+ */
+export type {$entity} = {\n";
                     $tsContent .= implode("\n", $tsFields);
                     $tsContent .= "\n  };\n";
                 }
@@ -184,7 +189,11 @@ class GenerateFormRequestsCommand extends BaseCommand
     protected function readFormRequests(string $path)
     {
         $classes = collect(iterator_to_array(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path))))
-            ->reject(fn ($i) => !$i->isFile() || !str_ends_with($i->getRealPath(), '.php'))
+            ->reject(fn ($i) =>
+                $i->isDir()
+                || str_ends_with($i->getRealPath(), '/..')
+                || ! str_ends_with($i->getRealPath(), '.php')
+            )
             ->map(fn ($item) => $this->fqcnFromPath($item->getRealPath()))
             ->filter( fn($class) => is_subclass_of($class, FormRequest::class)) 
             ->values();
