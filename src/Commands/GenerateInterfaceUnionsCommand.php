@@ -9,13 +9,13 @@ use RecursiveIteratorIterator;
 
 class GenerateInterfaceUnionsCommand extends BaseCommand
 {
-    protected $signature = 'export-interface-unions:generate
+    protected $signature = 'synergi-types:interface-unions
         {--input=app/Models}
         {--output=resources/js/models}
         {--format}
         {--prettier=}';
 
-    protected $description = 'Export models that implement an interface to your frontend.';
+    protected $description = 'Export models that implement an interface as TypeScript union types.';
 
     public function __construct(
         protected Filesystem $files
@@ -29,21 +29,19 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
 
         $interfaces = $this->readInterfaces(
             path: $this->base(),
-            interfaces: config('export-types.interfaces', [])
+            interfaces: config('synergi-types.interfaces', [])
         );
 
-        $tsContent = collect($interfaces)
-            ->map(function ($classes, $interface) {
-                $shortInterface = Str::afterLast($interface, '\\');
-                $classNames = collect($classes)
-                    ->map(fn ($class) => '"'. addslashes($class) . '"')
-                    ->implode(' | ');
-
-                return "export type {$shortInterface} = {$classNames};";
-            })
-            ->implode("\n\n");
-
-        $tsContent .= "\n\nexport {};\n";
+        // All interface unions should be exported under App.Interfaces
+        $tsContent = "declare namespace App.Interfaces {\n";
+        foreach ($interfaces as $interface => $classes) {
+            $shortInterface = Str::afterLast($interface, '\\');
+            $classNames = collect($classes)
+                ->map(fn ($class) => '"' . addslashes($class) . '"')
+                ->implode(' | ');
+            $tsContent .= "  export type {$shortInterface} = {$classNames};\n";
+        }
+        $tsContent .= "}\n";
 
         $this->files->put($this->tsFilePath($path), $tsContent);
     }
@@ -56,11 +54,11 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
         $paths = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path));
 
         $rootNamespace = $this->determineRootNamespace($interfaces);
-
+ 
         return collect($interfaces)
             ->mapWithKeys(fn ($interface) => [
                 $this->chopStart($interface, $rootNamespace) => collect($paths)
-                    ->reject(fn ($i) => $i->isDir() || str_ends_with($i->getRealPath(), '/..'))
+                    ->reject(fn ($i) => !$i->isFile() || !str_ends_with($i->getRealPath(), '.php'))
                     ->map(fn ($item) => $this->fqcnFromPath($item->getRealPath()))
                     ->filter(fn ($i) => is_subclass_of($i, $interface))
                     ->values()

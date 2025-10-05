@@ -10,13 +10,13 @@ use RecursiveIteratorIterator;
 
 class GenerateFormRequestsCommand extends BaseCommand
 {
-    protected $signature = 'export-form-requests:generate
+    protected $signature = 'synergi-types:requests
         {--input=app/Http/Requests}
         {--output=resources/js/form-requests}
         {--format}
         {--prettier=}';
 
-    protected $description = 'Export models that implement an interface to your frontend.';
+    protected $description = 'Export Form Requests as TypeScript types.';
 
     public function __construct(
         protected Filesystem $files
@@ -184,7 +184,7 @@ class GenerateFormRequestsCommand extends BaseCommand
     protected function readFormRequests(string $path)
     {
         $classes = collect(iterator_to_array(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path))))
-            ->reject(fn ($i) => $i->isDir() || str_ends_with($i->getRealPath(), '/..'))
+            ->reject(fn ($i) => !$i->isFile() || !str_ends_with($i->getRealPath(), '.php'))
             ->map(fn ($item) => $this->fqcnFromPath($item->getRealPath()))
             ->filter( fn($class) => is_subclass_of($class, FormRequest::class)) 
             ->values();
