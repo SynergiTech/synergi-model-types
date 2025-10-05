@@ -26,88 +26,159 @@ class GenerateFormRequestsCommand extends BaseCommand
 
     protected function process(): void
     {
-        $path = $this->option('output');
-
-        $formRequests = $this->readFormRequests($this->base());
-
-        // Group form requests by namespace
-        $grouped = collect($formRequests)
-            ->groupBy(function ($formRequest) {
-            return Str::of($formRequest['class'])
-                ->beforeLast('\\')
-                ->replace('\\', '.')
-                ->toString();
-            });
-
-        $tsContent = $grouped->map(function ($requests, $namespace) {
-            $interfaces = collect($requests)->map(function ($formRequest) {
-            $rulesString = collect($formRequest['rules'])
-                ->map(fn($type, $field) => "{$field}{$type};")
-                ->join("\n");
-            return <<<TS
-    /**
-     * @see {$formRequest['class']}
-     */
-        export interface {$formRequest['entity']} {
-        {$rulesString}
-        }
-    TS;
-            })->join("\n\n");
-
-            return <<<JAVASCRIPT
-    export namespace {$namespace} {
-    {$interfaces}
-    }
-    JAVASCRIPT;
-        })->join("\n\n");
-
-        $tsContent .= "\n\nexport {};\n";
-        $this->files->put($this->tsFilePath($path), $tsContent);
-
-    }
-
-    protected function parseRules(FormRequest $formRequest) {
-        $mappings = [
-            // TS -> PHP
-            'string' => ['string', 'email'],
-            'boolean' => ['boolean'],
-            'number' => ['number', 'integer'],
-            'any[]' => ['array'],
+        // https://laravel.com/docs/12.x/validation#available-validation-rules
+        $typeMap = [
+            'string' => 'string',
+            'integer' => 'number',
+            'int' => 'number',
+            'numeric' => 'number',
+            'float' => 'number',
+            'double' => 'number',
+            'decimal' => 'number',
+            'boolean' => 'boolean',
+            'bool' => 'boolean',
+            'accepted' => 'boolean',
+            'array' => 'any[]',
+            'object' => 'Record<string, any>',
+            'date' => 'string',
+            'email' => 'string',
+            'file' => 'File',
+            'image' => 'File',
+            'json' => 'any',
+            'url' => 'string',
+            'uuid' => 'string',
+            'ip' => 'string',
+            'active_url' => 'string',
+            'timezone' => 'string',
+            'digits' => 'string',
+            'digits_between' => 'number',
+            'ends_with' => 'string',
+            'starts_with' => 'string',
+            'alpha' => 'string',
+            'alpha_dash' => 'string',
+            'alpha_num' => 'string',
+            'regex' => 'string',
+            'present' => '',
+            'distinct' => '',
+            'nullable' => '',
+            'required' => '',
+            'sometimes' => '',
+            'confirmed' => '',
+            'between' => '',
+            'in' => '',
+            'not_in' => '',
+            'size' => '',
+            'min' => '',
+            'max' => '',
         ];
 
-        $rules = $formRequest->rules();
+        $path = $this->option('output');
+        $tsContent = '';
 
-        // Preparse the rules into a consistent format for easier processing
-        $r = collect($rules)
-            ->map(function ($rules, $field) use ($mappings, $formRequest) {    
-                $adjustedRules = is_array($rules) ? $rules : explode('|', $rules);
+        $formRequests = $this->readFormRequests($this->base()); 
 
-                return [ 
-                    'rules' => $adjustedRules
-                ];
+        $formRequests
+            ->groupBy(function ($formRequest) {
+                return Str::of($formRequest['class'])
+                    ->beforeLast('\\')
+                    ->replace('\\', '.')
+                    ->toString();
             })
-            // Strip any keys that contain a dot
-            ->reject(fn($v, $k) => Str::contains($k, '.'))
-            // Strip any rules that are closures or invokable objects
-            ->reject(fn($v) => collect($v['rules'])->contains(fn($rule) => is_object($rule)))
-            ->map(function ($item, $field) use ($mappings) {
-                $isNullable = in_array('nullable', $item['rules']);
-                $isSometimes = in_array('sometimes', $item['rules']);
-                $isArray = in_array('array', $item['rules']);
-                $type = 'any';
+            ->each(function ($requests, $namespace) use (&$tsContent, $typeMap) {
+                $tsContent .= "declare namespace {$namespace} {\n";
+                foreach ($requests as $request) {
+                    $entity = $request['entity'];
+                    $fields = $request['rules'];
 
-                foreach ($mappings as $tsType => $phpTypes) {
-                    if (count(array_intersect($phpTypes, $item['rules'])) > 0) {
-                        $type = $tsType;
-                        break;
+
+                    $tsFields = [];
+                    foreach ($fields as $field => $rules) {
+                        $tsType = 'string'; // default
+                        $isNullable = false;
+                        $isRequired = false;
+
+                        foreach ($rules as $rule) {
+                            $rule = strtolower($rule);
+                            if (isset($typeMap[$rule]) && $typeMap[$rule] !== '') {
+                                $tsType = $typeMap[$rule];
+                            }
+                            if ($rule === 'nullable') {
+                                $isNullable = true;
+                            }
+                            if ($rule === 'required') {
+                                $isRequired = true;
+                            }
+                        }
+
+                        if ($isNullable) {
+                            $tsType .= ' | null';
+                        }
+
+                        $optional = $isRequired ? '' : '?';
+                        $tsFields[] = "    {$field}{$optional}: {$tsType};";
+                    }
+
+                    $tsContent .= "  export type {$entity} = {\n";
+                    $tsContent .= implode("\n", $tsFields);
+                    $tsContent .= "\n  };\n";
+                }
+                $tsContent .= "}\n";
+            });
+
+        $this->files->put($this->tsFilePath($path), $tsContent);
+    }
+
+    protected function parseRules(FormRequest $formRequest) {          
+        $arrayOfRulesOrString = function ($rules) {
+            if (is_string($rules)) {
+                return explode('|', $rules);
+            }
+            // If it's an array, flatten and explode any pipe-separated strings
+            return collect($rules)
+                ->flatten()
+                ->filter(fn ($rule) => is_string($rule))
+                ->flatMap(function ($rule) {
+                    return str_contains($rule, '|') ? explode('|', $rule) : [$rule];
+                })
+                ->map(fn($rule) => trim($rule))
+                ->values()
+                ->toArray();
+        };
+
+        $fields = collect($formRequest->rules());
+
+        // Find all child keys (e.g., field.something) so we can remove them from the top level
+        $childKeys = collect($fields)
+            ->keys()
+            ->filter(fn($k) => str_contains($k, '.') && $fields->has(Str::before($k, '.')))
+            ->values();
+
+        return $fields
+            // Normalise all rules to arrays of strings for each field
+            ->map($arrayOfRulesOrString)
+            // TODO: Support array/object inference
+            /*
+            ->map(function ($adjusted, $field) use ($fields, $arrayOfRulesOrString) {
+                if (in_array('array', $adjusted)) {
+                    // Find all rules for keys like 'field.*'
+                    $children = collect($fields)
+                        ->filter(fn ($v, $k) => str_starts_with($k, $field . '.') && preg_match('/^' . preg_quote($field, '/') . '\.\*$/', $k))
+                        ->map($arrayOfRulesOrString);
+                    
+                    if ($children->isNotEmpty()) {
+                        return [
+                            'rules' => $adjusted,
+                            'children' => $children->toArray(),
+                        ];
                     }
                 }
 
-                $prefix = ($isNullable || $isSometimes) ? '?:' : ':';
-                return "{$prefix} {$type}";
-            });
-
-        return $r->toArray(); 
+                return $adjusted;
+            })
+            */
+            // Remove child keys from the top level
+            ->reject(fn  ($v, $k) => $childKeys->contains($k))
+            ->toArray();
     }
 
     protected function readFormRequests(string $path)
@@ -131,7 +202,6 @@ class GenerateFormRequestsCommand extends BaseCommand
                         'rules' => $this->parseRules(new $class()),
                         'class' => $class
                     ];  
-            })
-            ->toArray();
+            }) ;
     }
 }

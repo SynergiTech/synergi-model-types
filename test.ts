@@ -1,9 +1,7 @@
-import { App } from "./resources/js/form-requests";
-
-function useFormMock<T extends Record<string, any>>(fields: T) {
+function useFormMock<T extends Record<string, unknown>>(fields: T) {
   return fields;
 }
 
-const form = useFormMock<App.Http.Requests.MemberRequest>({
+const form = useFormMock<App.Http.Requests.TestRequest>({
   name: "John Doe",
 });

@@ -21,8 +21,9 @@ class TestRequest extends FormRequest
             'sometimes_required' => 'sometimes|required|string',
             'required_rule' => 'required|string',
             'nullable_rule' => 'nullable|string', 
-                'rule_array' => 'array',
-                'rule_array.*' => 'string',
+            'rule_array' => 'array',
+            'rule_array.*' => 'string',
+            'rule_array.id' => 'integer',
         ];
     }
 }
