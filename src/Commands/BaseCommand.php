@@ -182,16 +182,14 @@ abstract class BaseCommand extends Command
             for ($lookahead = $index + 1; isset($tokens[$lookahead]); $lookahead++) {
                 $nextToken = $tokens[$lookahead];
 
-                if (!is_array($nextToken)) {
-                    continue;
-                }
+                if (is_array($nextToken)) {
+                    if (in_array($nextToken[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                        continue;
+                    }
 
-                if (in_array($nextToken[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
-                    continue;
-                }
-
-                if ($nextToken[0] === T_STRING) {
-                    return $index;
+                    if ($nextToken[0] === T_STRING) {
+                        return $index;
+                    }
                 }
 
                 break;
