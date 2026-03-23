@@ -121,6 +121,17 @@ class GenerateInterfaceUnionsCommandTest extends TestCase
         $this->assertSame(['App\\Interfaces\\AnimalInterface'], $info['implements']);
     }
 
+    public function testParserIgnoresClassConstantReferencesBeforeClassDeclarationWhenFollowedByEnumCase(): void
+    {
+        $info = $this->makeParserCommand()->classInfo(
+            './workbench/app/Models/AttributeClassAndEnumReferenceAnimal.php'
+        );
+
+        $this->assertSame('AttributeClassAndEnumReferenceAnimal', $info['class']);
+        $this->assertSame('App\\Models\\AttributeClassAndEnumReferenceAnimal', $info['fqcn']);
+        $this->assertSame(['App\\Interfaces\\AnimalInterface'], $info['implements']);
+    }
+
     public function testCommandFailsForInvalidInputPath(): void
     {
         $this->expectException(\RuntimeException::class);
