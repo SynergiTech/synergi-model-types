@@ -21,11 +21,11 @@ class GenerateInterfaceUnionsCommandTest extends TestCase
         $output = file_get_contents('./models/index.d.ts');
 
         $this->assertIsString($output);
-        $this->assertStringContainsString('"App\\Models\\AliasAnimal"', $output);
-        $this->assertStringContainsString('"App\\Models\\AttributeClassReferenceAnimal"', $output);
-        $this->assertStringContainsString('"App\\Models\\FullyQualifiedAnimal"', $output);
-        $this->assertStringContainsString('"App\\Models\\GroupedUseAnimal"', $output);
-        $this->assertStringContainsString('"App\\Models\\InheritedAnimal"', $output);
+        $this->assertStringContainsString('"App\\\\Models\\\\AliasAnimal"', $output);
+        $this->assertStringContainsString('"App\\\\Models\\\\AttributeClassReferenceAnimal"', $output);
+        $this->assertStringContainsString('"App\\\\Models\\\\FullyQualifiedAnimal"', $output);
+        $this->assertStringContainsString('"App\\\\Models\\\\GroupedUseAnimal"', $output);
+        $this->assertStringContainsString('"App\\\\Models\\\\InheritedAnimal"', $output);
     }
 
     public function testCommandExportsFullClassNameWhenDeclarationCrossesChunkBoundary(): void
@@ -53,7 +53,7 @@ class GenerateInterfaceUnionsCommandTest extends TestCase
 
         $this->assertIsString($output);
         $this->assertStringContainsString(
-            '"App\\Models\\SomeLongClassNameThatCrossesTheLegacyChunkBoundary"',
+            '"App\\\\Models\\\\SomeLongClassNameThatCrossesTheLegacyChunkBoundary"',
             $output
         );
     }
