@@ -3,6 +3,7 @@
 namespace SynergiTech\ExportTypes\Commands;
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -55,6 +56,7 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
 
         $rootNamespace = $this->determineRootNamespace($interfaces);
 
+        /** @var Collection<string, array{namespace:string,class:string,fqcn:string,extends:string,implements:array<int,string>}> $classes */
         $classes = collect($paths)
             ->map(function ($item) {
                 if (!$item->isFile()) {
@@ -83,7 +85,14 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
             ->toArray();
     }
 
-    protected function classImplementsInterface(array $info, string $interface, $classes): bool
+    /**
+     * @param array{namespace:string,class:string,fqcn:string,extends:string,implements:array<int,string>} $info
+     * @param Collection<
+     *     string,
+     *     array{namespace:string,class:string,fqcn:string,extends:string,implements:array<int,string>}
+     * > $classes
+     */
+    protected function classImplementsInterface(array $info, string $interface, Collection $classes): bool
     {
         if (in_array($interface, $info['implements'], true)) {
             return true;

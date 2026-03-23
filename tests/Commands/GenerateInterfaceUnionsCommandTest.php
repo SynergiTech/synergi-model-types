@@ -22,6 +22,7 @@ class GenerateInterfaceUnionsCommandTest extends TestCase
 
         $this->assertIsString($output);
         $this->assertStringContainsString('"App\\\\Models\\\\AliasAnimal"', $output);
+        $this->assertStringContainsString('"App\\\\Models\\\\AttributeClassReferenceAnimal"', $output);
         $this->assertStringContainsString('"App\\\\Models\\\\FullyQualifiedAnimal"', $output);
         $this->assertStringContainsString('"App\\\\Models\\\\GroupedUseAnimal"', $output);
         $this->assertStringContainsString('"App\\\\Models\\\\InheritedAnimal"', $output);
@@ -109,6 +110,15 @@ class GenerateInterfaceUnionsCommandTest extends TestCase
         $info = $this->makeParserCommand()->classInfo('./workbench/app/Models/GlobalImportArrayAccessible.php');
 
         $this->assertSame(['ArrayAccess'], $info['implements']);
+    }
+
+    public function testParserIgnoresClassConstantReferencesBeforeClassDeclaration(): void
+    {
+        $info = $this->makeParserCommand()->classInfo('./workbench/app/Models/AttributeClassReferenceAnimal.php');
+
+        $this->assertSame('AttributeClassReferenceAnimal', $info['class']);
+        $this->assertSame('App\\Models\\AttributeClassReferenceAnimal', $info['fqcn']);
+        $this->assertSame(['App\\Interfaces\\AnimalInterface'], $info['implements']);
     }
 
     public function testCommandFailsForInvalidInputPath(): void
