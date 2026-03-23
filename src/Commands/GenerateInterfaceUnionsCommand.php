@@ -1,8 +1,9 @@
 <?php
 
 namespace SynergiTech\ExportTypes\Commands;
- 
+
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -22,7 +23,7 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
     ) {
         parent::__construct($files);
     }
- 
+
     protected function process(): void
     {
         $path = $this->option('output');
@@ -54,16 +55,53 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
         $paths = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path));
 
         $rootNamespace = $this->determineRootNamespace($interfaces);
- 
+
+        /** @var Collection<string, array{namespace:string,class:string,fqcn:string,extends:string,implements:array<int,string>}> $classes */
+        $classes = collect($paths)
+            ->map(function ($item) {
+                if (!$item->isFile()) {
+                    return null;
+                }
+
+                $realPath = $item->getRealPath();
+
+                if ($realPath === false || !str_ends_with($realPath, '.php')) {
+                    return null;
+                }
+
+                return $this->classInfoFromPath($realPath);
+            })
+            ->filter(fn ($info) => is_array($info) && $info['fqcn'] !== '')
+            ->keyBy('fqcn');
+
         return collect($interfaces)
             ->mapWithKeys(fn ($interface) => [
-                $this->chopStart($interface, $rootNamespace) => collect($paths)
-                    ->reject(fn ($i) => !$i->isFile() || !str_ends_with($i->getRealPath(), '.php'))
-                    ->map(fn ($item) => $this->fqcnFromPath($item->getRealPath()))
-                    ->filter(fn ($i) => is_subclass_of($i, $interface))
+                $this->chopStart($interface, $rootNamespace) => $classes
+                    ->filter(fn ($info) => $this->classImplementsInterface($info, $interface, $classes))
+                    ->map(fn ($info) => $info['fqcn'])
                     ->values()
                     ->toArray()
             ])
             ->toArray();
+    }
+
+    /**
+     * @param array{namespace:string,class:string,fqcn:string,extends:string,implements:array<int,string>} $info
+     * @param Collection<
+     *     string,
+     *     array{namespace:string,class:string,fqcn:string,extends:string,implements:array<int,string>}
+     * > $classes
+     */
+    protected function classImplementsInterface(array $info, string $interface, Collection $classes): bool
+    {
+        if (in_array($interface, $info['implements'], true)) {
+            return true;
+        }
+
+        if ($info['extends'] === '' || !$classes->has($info['extends'])) {
+            return false;
+        }
+
+        return $this->classImplementsInterface($classes->get($info['extends']), $interface, $classes);
     }
 }

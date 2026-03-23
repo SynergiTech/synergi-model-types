@@ -1,7 +1,9 @@
 ARG PHP_VERSION=8.2
 FROM php:$PHP_VERSION-cli-alpine
 
-RUN apk add git zip unzip autoconf make g++
+RUN apk add git zip unzip autoconf make g++ libxml2-dev
+
+RUN docker-php-ext-install simplexml
 
 # apparently newer xdebug needs these now?
 RUN apk add --update linux-headers
@@ -21,8 +23,8 @@ USER dev
 
 COPY --chown=dev composer.json ./
 
-ARG LARAVEL=9
-RUN composer require laravel/framework ^$LARAVEL.0
+ARG LARAVEL=12
+RUN composer require --no-interaction "laravel/framework:^${LARAVEL}.0"
 
 COPY --chown=dev . .
 
