@@ -3,7 +3,7 @@
 namespace SynergiTech\ExportTypes\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Filesystem\Filesystem; 
+use Illuminate\Filesystem\Filesystem;
 
 abstract class BaseCommand extends Command
 {
@@ -17,10 +17,11 @@ abstract class BaseCommand extends Command
         parent::__construct();
     }
 
-    protected function preprocess(): void {
-      $path = $this->option('output');
+    protected function preprocess(): void
+    {
+        $path = $this->option('output');
 
-      $this->files->ensureDirectoryExists(dirname($this->option('input')));
+        $this->files->ensureDirectoryExists(dirname($this->option('input')));
 
         if ($this->files->exists($path)) {
             $this->files->deleteDirectory($path);
@@ -32,7 +33,8 @@ abstract class BaseCommand extends Command
         );
     }
 
-    protected function runPostProcessingHooks(): void {
+    protected function runPostProcessingHooks(): void
+    {
         if ($this->option('format')) {
             $this->runPrettier($this->option('output'));
         }
@@ -42,10 +44,10 @@ abstract class BaseCommand extends Command
 
     public function handle(): void
     {
-      $this->preprocess();
-      $this->process();
-      $this->runPostProcessingHooks();
-      $this->done();
+        $this->preprocess();
+        $this->process();
+        $this->runPostProcessingHooks();
+        $this->done();
     }
 
     protected function done(): void
@@ -53,12 +55,11 @@ abstract class BaseCommand extends Command
         $path = $this->option('output');
         $this->info("Wrote types to {$this->tsFilePath($path)}!");
     }
- 
+
     protected function tsFilePath(string $path): string
     {
         return $this->joinPaths($path, 'index.d.ts');
     }
-
 
     protected function runPrettier(string $path, string $prettierCommand = 'npm exec prettier -- '): void
     {
@@ -99,47 +100,506 @@ abstract class BaseCommand extends Command
 
     protected function fqcnFromPath(string $path): string
     {
-        $namespace = $class = $buffer = '';
+        return $this->classInfoFromPath($path)['fqcn'];
+    }
+
+    /**
+     * @return array{namespace:string,class:string,fqcn:string,extends:string,implements:array<int,string>}
+     */
+    protected function classInfoFromPath(string $path): array
+    {
+        $declaration = $this->readClassDeclaration($path);
+
+        if ($declaration === '') {
+            return [
+                'namespace' => '',
+                'class' => '',
+                'fqcn' => '\\',
+                'extends' => '',
+                'implements' => [],
+            ];
+        }
+
+        $namespace = '';
+        $class = '';
+        $extends = '';
+        $implements = [];
+        $imports = [];
+
+        $tokens = token_get_all($declaration);
+        $classIndex = $this->findClassTokenIndex($tokens);
+
+        if ($classIndex === null) {
+            return [
+                'namespace' => '',
+                'class' => '',
+                'fqcn' => '\\',
+                'extends' => '',
+                'implements' => [],
+            ];
+        }
+
+        for ($index = 0; $index < $classIndex; $index++) {
+            $token = $tokens[$index];
+
+            if (!is_array($token)) {
+                continue;
+            }
+
+            if ($token[0] === T_NAMESPACE) {
+                $namespace = $this->parseQualifiedName($tokens, $index + 1);
+                continue;
+            }
+
+            if ($token[0] === T_USE) {
+                $imports = array_merge($imports, $this->parseUseStatement($tokens, $index));
+            }
+        }
+
+        $class = $this->parseClassName($tokens, $classIndex + 1);
+        $extends = $this->parseExtendedClass($tokens, $classIndex + 1, $namespace, $imports);
+        $implements = $this->parseImplementedInterfaces($tokens, $classIndex + 1, $namespace, $imports);
+
+        return [
+            'namespace' => $namespace,
+            'class' => $class,
+            'fqcn' => $namespace . '\\' . $class,
+            'extends' => $extends,
+            'implements' => $implements,
+        ];
+    }
+
+    protected function findClassTokenIndex(array $tokens): ?int
+    {
+        foreach ($tokens as $index => $token) {
+            if (!is_array($token) || $token[0] !== T_CLASS) {
+                continue;
+            }
+
+            return $index;
+        }
+
+        return null;
+    }
+
+    protected function parseClassName(array $tokens, int $index): string
+    {
+        for (; isset($tokens[$index]); $index++) {
+            $token = $tokens[$index];
+
+            if (!is_array($token)) {
+                continue;
+            }
+
+            if (in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            if ($token[0] === T_STRING) {
+                return $token[1];
+            }
+
+            break;
+        }
+
+        return '';
+    }
+
+    protected function readClassDeclaration(string $path): string
+    {
+        $buffer = '';
+        $classOffset = null;
+        $braceOffset = null;
+        $state = 'code';
+        $currentWord = '';
+        $currentWordOffset = null;
+        $lastWord = '';
+        $previousCharacter = '';
+        $scanOffset = 0;
 
         $handle = fopen($path, 'r');
 
         while (!feof($handle)) {
             $buffer .= fread($handle, 512);
 
-            // Suppress warnings for cases where `$buffer` ends in the middle of a PHP comment.
-            $tokens = @token_get_all($buffer);
+            $length = strlen($buffer);
+            for ($index = $scanOffset; $index < $length; $index++) {
+                $character = $buffer[$index];
+                $nextCharacter = $buffer[$index + 1] ?? '';
 
-            // Filter out whitespace and comments from the tokens, as they are irrelevant.
-            $tokens = array_filter($tokens, fn($token) => $token[0] !== T_WHITESPACE && $token[0] !== T_COMMENT);
+                if ($state === 'line_comment') {
+                    if ($character === "\n") {
+                        $state = 'code';
+                    }
 
-            // Reset array indexes after filtering.
-            $tokens = array_values($tokens);
-
-            foreach ($tokens as $index => $token) {
-                // The namespace is a `T_NAME_QUALIFIED` that is immediately preceded by a `T_NAMESPACE`.
-                if (
-                    $token[0] === T_NAMESPACE && isset($tokens[$index + 1])
-                    && $tokens[$index + 1][0] === T_NAME_QUALIFIED
-                ) {
-                    $namespace = $tokens[$index + 1][1];
                     continue;
                 }
 
-                // The class name is a `T_STRING` which makes it unreliable to match against, so check if we have a
-                // `T_CLASS` token with a `T_STRING` token ahead of it.
-                if ($token[0] === T_CLASS && isset($tokens[$index + 1]) && $tokens[$index + 1][0] === T_STRING) {
-                    $class = $tokens[$index + 1][1];
+                if ($state === 'block_comment') {
+                    if ($previousCharacter === '*' && $character === '/') {
+                        $state = 'code';
+                    }
+
+                    $previousCharacter = $character;
+                    continue;
                 }
+
+                if ($state === 'single_quote') {
+                    if ($character === '\'' && $previousCharacter !== '\\') {
+                        $state = 'code';
+                    }
+
+                    $previousCharacter = $character;
+                    continue;
+                }
+
+                if ($state === 'double_quote') {
+                    if ($character === '"' && $previousCharacter !== '\\') {
+                        $state = 'code';
+                    }
+
+                    $previousCharacter = $character;
+                    continue;
+                }
+
+                if ($character === '/' && ($nextCharacter === '/' || $nextCharacter === '*')) {
+                    $state = $nextCharacter === '/' ? 'line_comment' : 'block_comment';
+                    $previousCharacter = $character;
+                    $index++;
+                    continue;
+                }
+
+                if ($character === '#' && $nextCharacter !== '[') {
+                    $state = 'line_comment';
+                    continue;
+                }
+
+                if ($character === '\'' && $previousCharacter !== '\\') {
+                    $state = 'single_quote';
+                    $previousCharacter = $character;
+                    continue;
+                }
+
+                if ($character === '"' && $previousCharacter !== '\\') {
+                    $state = 'double_quote';
+                    $previousCharacter = $character;
+                    continue;
+                }
+
+                if (ctype_alnum($character) || $character === '_') {
+                    if ($currentWord === '') {
+                        $currentWordOffset = $index;
+                    }
+
+                    $currentWord .= $character;
+                    $previousCharacter = $character;
+                    continue;
+                }
+
+                if ($currentWord !== '') {
+                    if ($currentWord === 'class' && $lastWord !== 'new') {
+                        $classOffset = $currentWordOffset;
+                    }
+
+                    $lastWord = $currentWord;
+                    $currentWord = '';
+                    $currentWordOffset = null;
+                }
+
+                if ($classOffset !== null && $character === '{') {
+                    $braceOffset = $index;
+                    break 2;
+                }
+
+                if (!ctype_space($character)) {
+                    $lastWord = '';
+                }
+
+                $previousCharacter = $character;
             }
 
-            if ($namespace && $class) {
-                // We've found both the namespace and the class, we can now stop reading and parsing the file.
-                break;
-            }
+            $scanOffset = $length;
         }
 
         fclose($handle);
-        return $namespace . '\\' . $class;
+
+        if ($braceOffset === null) {
+            return '';
+        }
+
+        return substr($buffer, 0, $braceOffset + 1);
+    }
+
+    protected function parseQualifiedName(array $tokens, int $index): string
+    {
+        $name = '';
+
+        for (; isset($tokens[$index]); $index++) {
+            $token = $tokens[$index];
+
+            if (!is_array($token)) {
+                if ($token === ';' || $token === '{') {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            if (in_array($token[0], [T_STRING, T_NAME_QUALIFIED, T_NS_SEPARATOR], true)) {
+                $name .= $token[1];
+                continue;
+            }
+
+            break;
+        }
+
+        return $name;
+    }
+
+    protected function parseUseStatement(array $tokens, int &$index): array
+    {
+        $imports = [];
+        $prefix = '';
+        $name = '';
+        $alias = '';
+        $mode = 'name';
+        $grouped = false;
+        $statementStarted = false;
+
+        for ($index++; isset($tokens[$index]); $index++) {
+            $token = $tokens[$index];
+
+            if (!is_array($token)) {
+                if ($token === '{') {
+                    $grouped = true;
+                    $prefix = trim($name, '\\');
+                    $name = '';
+                    $alias = '';
+                    $mode = 'name';
+                    continue;
+                }
+
+                if ($token === ',') {
+                    $this->appendImport($imports, $prefix, $name, $alias, $grouped);
+                    $name = '';
+                    $alias = '';
+                    $mode = 'name';
+                    continue;
+                }
+
+                if ($token === '}') {
+                    $this->appendImport($imports, $prefix, $name, $alias, $grouped);
+                    $name = '';
+                    $alias = '';
+                    $mode = 'name';
+                    continue;
+                }
+
+                if ($token === ';') {
+                    $this->appendImport($imports, $prefix, $name, $alias, $grouped);
+                    break;
+                }
+
+                continue;
+            }
+
+            if (in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            if (!$statementStarted && in_array($token[0], [T_FUNCTION, T_CONST], true)) {
+                while (isset($tokens[$index]) && $tokens[$index] !== ';') {
+                    $index++;
+                }
+
+                break;
+            }
+
+            $statementStarted = true;
+
+            if ($token[0] === T_AS) {
+                $mode = 'alias';
+                continue;
+            }
+
+            if (!$this->isNameToken($token)) {
+                continue;
+            }
+
+            if ($mode === 'alias') {
+                $alias .= $token[1];
+                continue;
+            }
+
+            $name .= $token[1];
+        }
+
+        return $imports;
+    }
+
+    protected function appendImport(array &$imports, string $prefix, string $name, string $alias, bool $grouped): void
+    {
+        if ($name === '') {
+            return;
+        }
+
+        $fqcn = $grouped
+            ? trim($prefix . '\\' . ltrim($name, '\\'), '\\')
+            : trim($name, '\\');
+
+        if ($fqcn === '') {
+            return;
+        }
+
+        $resolvedAlias = $alias !== ''
+            ? $alias
+            : substr($fqcn, strrpos($fqcn, '\\') + 1);
+
+        $imports[$resolvedAlias] = $fqcn;
+    }
+
+    protected function parseImplementedInterfaces(array $tokens, int $index, string $namespace, array $imports): array
+    {
+        $implements = [];
+        $name = '';
+        $parsingImplements = false;
+
+        for (; isset($tokens[$index]); $index++) {
+            $token = $tokens[$index];
+
+            if (!is_array($token)) {
+                if ($token === ',') {
+                    $this->appendResolvedInterface($implements, $name, $namespace, $imports);
+                    $name = '';
+                    continue;
+                }
+
+                if ($token === '{') {
+                    $this->appendResolvedInterface($implements, $name, $namespace, $imports);
+                    break;
+                }
+
+                continue;
+            }
+
+            if (in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            if ($token[0] === T_IMPLEMENTS) {
+                $parsingImplements = true;
+                continue;
+            }
+
+            if (!$parsingImplements) {
+                continue;
+            }
+
+            if (!$this->isNameToken($token)) {
+                continue;
+            }
+
+            $name .= $token[1];
+        }
+
+        return array_values(array_unique($implements));
+    }
+
+    protected function parseExtendedClass(array $tokens, int $index, string $namespace, array $imports): string
+    {
+        $name = '';
+        $parsingExtends = false;
+
+        for (; isset($tokens[$index]); $index++) {
+            $token = $tokens[$index];
+
+            if (!is_array($token)) {
+                if ($token === '{' || $token === ',') {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            if ($token[0] === T_EXTENDS) {
+                $parsingExtends = true;
+                continue;
+            }
+
+            if ($token[0] === T_IMPLEMENTS) {
+                break;
+            }
+
+            if (!$parsingExtends) {
+                continue;
+            }
+
+            if (!$this->isNameToken($token)) {
+                continue;
+            }
+
+            $name .= $token[1];
+        }
+
+        return $this->resolveImportedName($name, $namespace, $imports);
+    }
+
+    protected function appendResolvedInterface(
+        array &$implements,
+        string $name,
+        string $namespace,
+        array $imports
+    ): void {
+        $resolved = $this->resolveImportedName($name, $namespace, $imports);
+
+        if ($resolved !== '') {
+            $implements[] = $resolved;
+        }
+    }
+
+    protected function resolveImportedName(string $name, string $namespace, array $imports): string
+    {
+        $name = trim($name);
+
+        if ($name === '') {
+            return '';
+        }
+
+        if (str_starts_with($name, '\\')) {
+            return ltrim($name, '\\');
+        }
+
+        $segments = explode('\\', $name);
+        $root = $segments[0];
+
+        if (isset($imports[$root])) {
+            $suffix = array_slice($segments, 1);
+
+            return implode('\\', array_filter([$imports[$root], ...$suffix]));
+        }
+
+        if (str_contains($name, '\\')) {
+            return trim($namespace . '\\' . $name, '\\');
+        }
+
+        if (isset($imports[$name])) {
+            return $imports[$name];
+        }
+
+        return trim($namespace . '\\' . $name, '\\');
+    }
+
+    protected function isNameToken(array $token): bool
+    {
+        return in_array($token[0], [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_NS_SEPARATOR], true);
     }
 
     // Laravel < 11 doesn't have Str::chopStart

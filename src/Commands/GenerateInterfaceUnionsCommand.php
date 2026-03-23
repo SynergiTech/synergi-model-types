@@ -1,7 +1,7 @@
 <?php
 
 namespace SynergiTech\ExportTypes\Commands;
- 
+
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 use RecursiveDirectoryIterator;
@@ -22,7 +22,7 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
     ) {
         parent::__construct($files);
     }
- 
+
     protected function process(): void
     {
         $path = $this->option('output');
@@ -54,16 +54,33 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
         $paths = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path));
 
         $rootNamespace = $this->determineRootNamespace($interfaces);
- 
+
+        $classes = collect($paths)
+            ->reject(fn ($i) => !$i->isFile() || !str_ends_with($i->getRealPath(), '.php'))
+            ->map(fn ($item) => $this->classInfoFromPath($item->getRealPath()))
+            ->keyBy('fqcn');
+
         return collect($interfaces)
             ->mapWithKeys(fn ($interface) => [
-                $this->chopStart($interface, $rootNamespace) => collect($paths)
-                    ->reject(fn ($i) => !$i->isFile() || !str_ends_with($i->getRealPath(), '.php'))
-                    ->map(fn ($item) => $this->fqcnFromPath($item->getRealPath()))
-                    ->filter(fn ($i) => is_subclass_of($i, $interface))
+                $this->chopStart($interface, $rootNamespace) => $classes
+                    ->filter(fn ($info) => $this->classImplementsInterface($info, $interface, $classes))
+                    ->map(fn ($info) => $info['fqcn'])
                     ->values()
                     ->toArray()
             ])
             ->toArray();
+    }
+
+    protected function classImplementsInterface(array $info, string $interface, $classes): bool
+    {
+        if (in_array($interface, $info['implements'], true)) {
+            return true;
+        }
+
+        if ($info['extends'] === '' || !$classes->has($info['extends'])) {
+            return false;
+        }
+
+        return $this->classImplementsInterface($classes->get($info['extends']), $interface, $classes);
     }
 }

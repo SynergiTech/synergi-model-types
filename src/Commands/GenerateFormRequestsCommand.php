@@ -1,7 +1,7 @@
 <?php
 
 namespace SynergiTech\ExportTypes\Commands;
- 
+
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
@@ -75,7 +75,7 @@ class GenerateFormRequestsCommand extends BaseCommand
         $path = $this->option('output');
         $tsContent = '';
 
-        $formRequests = $this->readFormRequests($this->base()); 
+        $formRequests = $this->readFormRequests($this->base());
 
         $formRequests
             ->groupBy(function ($formRequest) {
@@ -133,7 +133,8 @@ export type {$entity} = {\n";
         $this->files->put($this->tsFilePath($path), $tsContent);
     }
 
-    protected function parseRules(FormRequest $formRequest) {          
+    protected function parseRules(FormRequest $formRequest)
+    {
         $arrayOfRulesOrString = function ($rules) {
             if (is_string($rules)) {
                 return explode('|', $rules);
@@ -145,7 +146,7 @@ export type {$entity} = {\n";
                 ->flatMap(function ($rule) {
                     return str_contains($rule, '|') ? explode('|', $rule) : [$rule];
                 })
-                ->map(fn($rule) => trim($rule))
+                ->map(fn ($rule) => trim($rule))
                 ->values()
                 ->toArray();
         };
@@ -167,9 +168,12 @@ export type {$entity} = {\n";
                 if (in_array('array', $adjusted)) {
                     // Find all rules for keys like 'field.*'
                     $children = collect($fields)
-                        ->filter(fn ($v, $k) => str_starts_with($k, $field . '.') && preg_match('/^' . preg_quote($field, '/') . '\.\*$/', $k))
+                        ->filter(
+                            fn ($v, $k) => str_starts_with($k, $field . '.')
+                                && preg_match('/^' . preg_quote($field, '/') . '\.\*$/', $k)
+                        )
                         ->map($arrayOfRulesOrString);
-                    
+
                     if ($children->isNotEmpty()) {
                         return [
                             'rules' => $adjusted,
@@ -182,20 +186,20 @@ export type {$entity} = {\n";
             })
             */
             // Remove child keys from the top level
-            ->reject(fn  ($v, $k) => $childKeys->contains($k))
+            ->reject(fn ($v, $k) => $childKeys->contains($k))
             ->toArray();
     }
 
     protected function readFormRequests(string $path)
     {
         $classes = collect(iterator_to_array(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path))))
-            ->reject(fn ($i) =>
-                $i->isDir()
-                || str_ends_with($i->getRealPath(), '/..')
-                || ! str_ends_with($i->getRealPath(), '.php')
+            ->reject(
+                fn ($i) => $i->isDir()
+                    || str_ends_with($i->getRealPath(), '/..')
+                    || ! str_ends_with($i->getRealPath(), '.php')
             )
             ->map(fn ($item) => $this->fqcnFromPath($item->getRealPath()))
-            ->filter( fn($class) => is_subclass_of($class, FormRequest::class)) 
+            ->filter(fn ($class) => is_subclass_of($class, FormRequest::class))
             ->values();
 
         $rootNamespace = $this->determineRootNamespace($classes->toArray());
@@ -205,12 +209,11 @@ export type {$entity} = {\n";
                 $classKey = Str::of($this->chopStart($class, $rootNamespace))
                     ->replace('\\', '')
                     ->toString();
-                    
-                    return [
-                        'entity' => $classKey,
-                        'rules' => $this->parseRules(new $class()),
-                        'class' => $class
-                    ];  
-            }) ;
+                return [
+                    'entity' => $classKey,
+                    'rules' => $this->parseRules(new $class()),
+                    'class' => $class,
+                ];
+            });
     }
 }

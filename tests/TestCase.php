@@ -2,8 +2,8 @@
 
 namespace SynergiTech\ExportTypes\Tests;
 
-use Orchestra\Testbench\TestCase as OrchestraTestCase; 
 use Orchestra\Testbench\Concerns\WithWorkbench;
+use Orchestra\Testbench\TestCase as OrchestraTestCase;
 
 class TestCase extends OrchestraTestCase
 {
