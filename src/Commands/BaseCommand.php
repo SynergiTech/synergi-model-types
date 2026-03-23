@@ -20,8 +20,11 @@ abstract class BaseCommand extends Command
     protected function preprocess(): void
     {
         $path = $this->option('output');
+        $basePath = $this->base();
 
-        $this->files->ensureDirectoryExists(dirname($this->option('input')));
+        if (!$this->files->isDirectory($basePath) || !$this->files->isReadable($basePath)) {
+            throw new \RuntimeException("Input path [{$basePath}] does not exist or is not readable.");
+        }
 
         if ($this->files->exists($path)) {
             $this->files->deleteDirectory($path);
@@ -114,7 +117,7 @@ abstract class BaseCommand extends Command
             return [
                 'namespace' => '',
                 'class' => '',
-                'fqcn' => '\\',
+                'fqcn' => '',
                 'extends' => '',
                 'implements' => [],
             ];
@@ -133,7 +136,7 @@ abstract class BaseCommand extends Command
             return [
                 'namespace' => '',
                 'class' => '',
-                'fqcn' => '\\',
+                'fqcn' => '',
                 'extends' => '',
                 'implements' => [],
             ];
@@ -163,7 +166,7 @@ abstract class BaseCommand extends Command
         return [
             'namespace' => $namespace,
             'class' => $class,
-            'fqcn' => $namespace . '\\' . $class,
+            'fqcn' => trim($namespace . '\\' . $class, '\\'),
             'extends' => $extends,
             'implements' => $implements,
         ];
@@ -218,6 +221,10 @@ abstract class BaseCommand extends Command
         $scanOffset = 0;
 
         $handle = fopen($path, 'r');
+
+        if ($handle === false) {
+            return '';
+        }
 
         while (!feof($handle)) {
             $buffer .= fread($handle, 512);
@@ -457,9 +464,16 @@ abstract class BaseCommand extends Command
 
         $resolvedAlias = $alias !== ''
             ? $alias
-            : substr($fqcn, strrpos($fqcn, '\\') + 1);
+            : $this->defaultImportAlias($fqcn);
 
         $imports[$resolvedAlias] = $fqcn;
+    }
+
+    protected function defaultImportAlias(string $fqcn): string
+    {
+        $position = strrpos($fqcn, '\\');
+
+        return $position === false ? $fqcn : substr($fqcn, $position + 1);
     }
 
     protected function parseImplementedInterfaces(array $tokens, int $index, string $namespace, array $imports): array

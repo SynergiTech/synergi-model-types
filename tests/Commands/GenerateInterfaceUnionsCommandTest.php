@@ -104,6 +104,24 @@ class GenerateInterfaceUnionsCommandTest extends TestCase
         $this->assertSame([], $info['implements']);
     }
 
+    public function testParserResolvesSingleSegmentImports(): void
+    {
+        $info = $this->makeParserCommand()->classInfo('./workbench/app/Models/GlobalImportArrayAccessible.php');
+
+        $this->assertSame(['ArrayAccess'], $info['implements']);
+    }
+
+    public function testCommandFailsForInvalidInputPath(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('does not exist or is not readable');
+
+        $command = $this->artisan('synergi-types:interface-unions --input=app/DoesNotExist --output=invalid-models');
+
+        $this->assertInstanceOf(PendingCommand::class, $command);
+        $command->run();
+    }
+
     protected function makeParserCommand(): TestableGenerateInterfaceUnionsCommand
     {
         return new TestableGenerateInterfaceUnionsCommand(new Filesystem());

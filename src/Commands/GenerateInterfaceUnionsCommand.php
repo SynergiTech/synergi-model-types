@@ -56,8 +56,20 @@ class GenerateInterfaceUnionsCommand extends BaseCommand
         $rootNamespace = $this->determineRootNamespace($interfaces);
 
         $classes = collect($paths)
-            ->reject(fn ($i) => !$i->isFile() || !str_ends_with($i->getRealPath(), '.php'))
-            ->map(fn ($item) => $this->classInfoFromPath($item->getRealPath()))
+            ->map(function ($item) {
+                if (!$item->isFile()) {
+                    return null;
+                }
+
+                $realPath = $item->getRealPath();
+
+                if ($realPath === false || !str_ends_with($realPath, '.php')) {
+                    return null;
+                }
+
+                return $this->classInfoFromPath($realPath);
+            })
+            ->filter(fn ($info) => is_array($info) && $info['fqcn'] !== '')
             ->keyBy('fqcn');
 
         return collect($interfaces)
